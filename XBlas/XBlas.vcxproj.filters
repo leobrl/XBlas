@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Include">
+      <UniqueIdentifier>{ef693992-74de-4109-b93d-60ba7b74ca6b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{bf7b9a47-212c-4ab2-ae85-76a4ce8e22f0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Include\ObjectPool.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Architecture.hpp">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Matrix.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\MemoryBuffer.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\Array.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\MemoryLayout.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\CudaManager.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+    <ClInclude Include="Include\MatrixColumn.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="Source\Array.cu">
+      <Filter>Source</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\CudaManager.cu">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\All.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
