@@ -6,10 +6,17 @@ namespace XBlas
 {
 	CudaManager::CudaManager()
 	{
-		cublasStatus_t status = cublasCreate(&handle);
-		if (status != CUBLAS_STATUS_SUCCESS)
+		cublasStatus_t cublasStatus = cublasCreate(&handle);
+		if (cublasStatus != CUBLAS_STATUS_SUCCESS)
 		{
-			std::string message = "CUBLAS initialization failed with error code " + status;
+			std::string message = "CUBLAS initialization failed with error code " + cublasStatus;
+			throw std::runtime_error(message);
+		}
+
+		cusolverStatus_t cusolverStatus = cusolverDnCreate(&solver_handle);
+		if (cusolverStatus != CUSOLVER_STATUS_SUCCESS)
+		{
+			std::string message = "CUBLAS initialization failed with error code " + cusolverStatus;
 			throw std::runtime_error(message);
 		}
 	}

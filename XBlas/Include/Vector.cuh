@@ -12,23 +12,23 @@
 namespace XBlas
 {
 	template<class T>
-	class  __declspec(dllexport) Array : public MemoryLayout<T>
+	class  __declspec(dllexport) Vector : public MemoryLayout<T>
 	{
 	private:
 		
-		Array(size_t capacity, Architecture arch);
-		Array(std::shared_ptr<MemoryBuffer<T>> memoryBuffer);
+		Vector(size_t capacity, Architecture arch);
+		Vector(std::shared_ptr<MemoryBuffer<T>> memoryBuffer);
 
 	public:
 
-		static std::shared_ptr<Array<T>> Build(long capacity, Architecture arch);
-		static std::shared_ptr<Array<T>> Build(std::shared_ptr<MemoryBuffer<T>> memoryBuffer);
+		static std::shared_ptr<Vector<T>> Build(long capacity, Architecture arch);
+		static std::shared_ptr<Vector<T>> Build(std::shared_ptr<MemoryBuffer<T>> memoryBuffer);
 
-		Array() = delete;
-		Array(Array&) = delete;
-		Array(Array&&) = delete;
-		Array& operator=(Array const&) = delete;
-		Array& operator=(Array const&&) = delete;
+		Vector() = delete;
+		Vector(Vector&) = delete;
+		Vector(Vector&&) = delete;
+		Vector& operator=(Vector const&) = delete;
+		Vector& operator=(Vector const&&) = delete;
 
 		T& operator [] (size_t index);
 		const T& operator [] (size_t index) const;
@@ -40,34 +40,34 @@ namespace XBlas
 	};
 
 	template<class T>
-	std::shared_ptr<Array<T>> Array<T>::Build(long capacity, Architecture arch)
+	std::shared_ptr<Vector<T>> Vector<T>::Build(long capacity, Architecture arch)
 	{
 		if (capacity < 0)
 			throw std::out_of_range("Capacity must be a positive number");
 		 
-		return std::shared_ptr<Array<T>>(new Array<T>(capacity, arch));
+		return std::shared_ptr<Vector<T>>(new Vector<T>(capacity, arch));
 	}
 
 	template<class T>
-	Array<T>::Array(size_t capacity, Architecture arch)
+	Vector<T>::Vector(size_t capacity, Architecture arch)
 	{
 		SetBuffer(MemoryBuffer<T>::MemAlloc(capacity, arch));
 	}
 
 	template<class T>
-	std::shared_ptr<Array<T>> Array<T>::Build(std::shared_ptr<MemoryBuffer<T>> memoryBuffer)
+	std::shared_ptr<Vector<T>> Vector<T>::Build(std::shared_ptr<MemoryBuffer<T>> memoryBuffer)
 	{
-		return std::shared_ptr<Array<T>>(new Array<T>(memoryBuffer));
+		return std::shared_ptr<Vector<T>>(new Vector<T>(memoryBuffer));
 	}
 
 	template<class T>
-	Array<T>::Array(std::shared_ptr<MemoryBuffer<T>> memoryBuffer)
+	Vector<T>::Vector(std::shared_ptr<MemoryBuffer<T>> memoryBuffer)
 	{
 		SetBuffer(memoryBuffer);
 	}
 
 	template<class T>
-	T & Array<T>::operator[](size_t index)
+	T & Vector<T>::operator[](size_t index)
 	{
 		switch (buffer->GetArchitecture())
 		{
@@ -81,7 +81,7 @@ namespace XBlas
 	}
 
 	template<class T> 
-	const T & Array<T>::operator[](size_t index) const
+	const T & Vector<T>::operator[](size_t index) const
 	{
 		switch (buffer->GetArchitecture())
 		{
@@ -95,7 +95,7 @@ namespace XBlas
 	}
 
 	// for testing
-	template class Array<int>;
+	template class Vector<int>;
 }
 
 #endif // !XBLAS_ARRAY

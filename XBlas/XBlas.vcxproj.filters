@@ -21,9 +21,6 @@
     <ClInclude Include="Include\MemoryBuffer.cuh">
       <Filter>Include</Filter>
     </ClInclude>
-    <ClInclude Include="Include\Array.cuh">
-      <Filter>Include</Filter>
-    </ClInclude>
     <ClInclude Include="Include\MemoryLayout.cuh">
       <Filter>Include</Filter>
     </ClInclude>
@@ -33,11 +30,9 @@
     <ClInclude Include="Include\MatrixColumn.cuh">
       <Filter>Include</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <CudaCompile Include="Source\Array.cu">
-      <Filter>Source</Filter>
-    </CudaCompile>
+    <ClInclude Include="Include\Vector.cuh">
+      <Filter>Include</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\CudaManager.cu">

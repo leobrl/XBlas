@@ -1,17 +1,17 @@
 #pragma once
 
-#define defaultArrayCapacity 10
+#define defaultVectorCapacity 10
 #define defaultMatrixRows 3
 #define defaultMatrixColumns 3
 #define XBlasHost XBlas::Architecture::Host
 #define XBlasDevice XBlas::Architecture::Device
 
-#define hostDefaultArrayInput \
-	const size_t capacity = defaultArrayCapacity; \
+#define hostDefaultVectorInput \
+	const size_t capacity = defaultVectorCapacity; \
 	XBlas::Architecture arch = XBlasHost;
 
-#define deviceDefaultArrayInput \
-	const size_t capacity = defaultArrayCapacity; \
+#define deviceDefaultVectorInput \
+	const size_t capacity = defaultVectorCapacity; \
 	XBlas::Architecture arch = XBlasDevice;
 
 #define hostDefaultMatrixInput \

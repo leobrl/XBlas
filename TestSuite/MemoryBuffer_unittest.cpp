@@ -6,13 +6,13 @@
 
 TEST(MemoryBuffer_hostTest, Allocation)
 {
-	hostDefaultArrayInput;
+	hostDefaultVectorInput;
 	std::shared_ptr<XBlas::MemoryBuffer<int>> theArray = XBlas::MemoryBuffer<int>::MemAlloc(capacity, arch);
 }
 
 TEST(MemoryBuffer_hostTest, AllocationNegativeSize)
 {
-	hostDefaultArrayInput;
+	hostDefaultVectorInput;
 	EXPECT_THROW(
 		XBlas::MemoryBuffer<int>::MemAlloc(-capacity, arch),
 		std::out_of_range
@@ -21,13 +21,13 @@ TEST(MemoryBuffer_hostTest, AllocationNegativeSize)
 
 TEST(MemoryBuffer_deviceTest, Allocation)
 {
-	deviceDefaultArrayInput;
+	deviceDefaultVectorInput;
 	std::shared_ptr<XBlas::MemoryBuffer<int>> theArray = XBlas::MemoryBuffer<int>::MemAlloc(capacity, arch);
 }
 
 TEST(MemoryBuffer_deviceTest, AllocationNegativeSize)
 {
-	deviceDefaultArrayInput;
+	deviceDefaultVectorInput;
 	EXPECT_THROW(
 		XBlas::MemoryBuffer<int>::MemAlloc(-capacity, arch),
 		std::out_of_range
@@ -36,7 +36,7 @@ TEST(MemoryBuffer_deviceTest, AllocationNegativeSize)
 
 TEST(MemoryBuffer_deviceTest, MoveOperation)
 {
-	hostDefaultArrayInput;
+	hostDefaultVectorInput;
 	std::shared_ptr<XBlas::MemoryBuffer<int>> buffer = XBlas::MemoryBuffer<int>::MemAlloc(capacity, arch);
 
 	int *p1 = buffer->GetPtr();

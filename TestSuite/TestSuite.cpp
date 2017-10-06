@@ -10,7 +10,7 @@
 int main(int ac, char* av[])
 {
 	testing::InitGoogleTest(&ac, av);
-//	testing::GTEST_FLAG(filter) = "*Dimensions";
+	testing::GTEST_FLAG(filter) = "*Inverse";
 	RUN_ALL_TESTS();
 }
 

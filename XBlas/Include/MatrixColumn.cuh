@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 #include <memory>
-#include "Array.cuh"
+#include "Vector.cuh"
 
 #ifndef XBLAS_MATRIX_COLUMN
 #define XBLAS_MATRIX_COLUMN
