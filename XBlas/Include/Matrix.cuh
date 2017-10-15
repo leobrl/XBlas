@@ -18,6 +18,18 @@
 
 namespace XBlas
 {
+	template<typename T>
+	class Matrix;
+
+	template<class T>
+	using __matrix__ = std::shared_ptr<Matrix<T>>;
+
+	template<class T>
+	using __buffer__ = std::shared_ptr<MemoryBuffer<T>>;
+
+	template<class T>
+	using __column__ = std::shared_ptr<MatrixColumn<T>>;
+
 	/* Implementation of column major matrix*/
 	template<class T>
 	class  __declspec(dllexport) Matrix : public MemoryLayout<T>
@@ -25,22 +37,14 @@ namespace XBlas
 		static_assert(sizeof(T) == 4, "Matrix only supports type with size of 32 bits.");
 		static_assert(std::is_arithmetic<T>::value, "Matrix only supports arithmetic types.");
 
-		//template <class T> struct supports_inversion { enum { value = false }; };
-		//template <> struct supports_inversion<int> { enum { value = false }; };
-		//template <> struct supports_inversion<float> { enum { value = true }; };
-
-		using __matrix__ = std::shared_ptr<Matrix<T>>;
-		using __buffer__ = std::shared_ptr<MemoryBuffer<T>>;
-		using __column__ = std::shared_ptr<MatrixColumn<T>>;
-
 	private:
 
 		size_t nRows_;
 		size_t nColumns_;
-		std::vector<__column__> columns;
+		std::vector<__column__<T>> columns;
 
 		Matrix(size_t nRows, size_t nColumns, Architecture arch);
-		Matrix(__buffer__ memoryBuffer, long nRows, long nColumns);
+		Matrix(__buffer__<T> memoryBuffer, long nRows, long nColumns);
 
 		void SetColumns();
 
@@ -52,11 +56,11 @@ namespace XBlas
 		Matrix& operator=(Matrix const&) = delete;
 		Matrix& operator=(Matrix const&&) = delete;
 
-		static __matrix__ Build(long nRows, long nColumns, Architecture arch);
+		static __matrix__<T> Build(long nRows, long nColumns, Architecture arch);
 
-		static __matrix__ Build(__buffer__ memoryBuffer, long nRows, long nColumns);
+		static __matrix__<T> Build(__buffer__<T> memoryBuffer, long nRows, long nColumns);
 
-		static __matrix__ Identity(long nRows, Architecture arch);
+		static __matrix__<T> Identity(long nRows, Architecture arch);
 
 		void Move(Architecture arch) override;
 
@@ -75,195 +79,29 @@ namespace XBlas
 			return this->nColumns_;
 		}
 
-		__column__& operator [] (size_t index);
+		__column__<T>& operator [] (size_t index);
 
-		const __column__& operator [] (size_t index) const;
+		const __column__<T>& operator [] (size_t index) const;
 
-		__matrix__ Transpose();
+		__matrix__<T> Transpose();
 
-		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
-		std::shared_ptr<Matrix<U>>  operator* (std::shared_ptr<Matrix<U>> B)
-		{
-			//TODO refactor this
-			std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(this->nRows_, B->nColumns(), Architecture::Device);
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>>  operator* (std::shared_ptr<Matrix<U>> B);
 
-			CudaManager& manager = CudaManager::GetInstance();
-			cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
-			int leadingDimensionB = B->nRows();
-			int leadingDimensionC = C->nRows();
-			int nColC = C->nColumns();
-			float alpha = 1.0f;
-			float beta = 0.0f;
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>> Inverse();
 
-			switch (buffer->GetArchitecture())
-			{
-			case Host:
-				this->Move(Device);
-				B->Move(Device);
-
-				status = cublasSgemm(manager.GetCublasHandle(),
-					CUBLAS_OP_N,
-					CUBLAS_OP_N,
-					leadingDimensionB,
-					nColC,
-					leadingDimensionC,
-					&alpha,
-					(float*)this->buffer->GetPtr(),
-					leadingDimensionB,
-					(float*)B->buffer->GetPtr(),
-					leadingDimensionC,
-					&beta,
-					(float*)C->buffer->GetPtr(),
-					leadingDimensionB);
-				checkCudaStatus(status);
-
-				this->Move(Host);
-				B->Move(Host);
-				C->Move(Host);
-
-				break;
-			case Device:
-
-				status = cublasSgemm(manager.GetCublasHandle(),
-					CUBLAS_OP_N,
-					CUBLAS_OP_N,
-					leadingDimensionB,
-					nColC,
-					leadingDimensionC,
-					&alpha,
-					(float*)B->buffer->GetPtr(),
-					leadingDimensionB,
-					(float*)C->buffer->GetPtr(),
-					leadingDimensionC,
-					&beta,
-					(float*)this->buffer->GetPtr(),
-					leadingDimensionB);
-				checkCudaStatus(status);
-				break;
-			default:
-				INVALID_ARCHITECTURE_EXCEPTION
-			}
-
-			return C;
-		}
-
-		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
-		std::shared_ptr<Matrix<U>> Inverse()
-		{
-			std::shared_ptr<Matrix<U>> inverse;
-			switch (buffer->GetArchitecture())
-			{
-			case Host:
-			{
-				this->Move(Device);
-				inverse = CuInverse();
-				this->Move(Host);
-				inverse->Move(Host);
-			}
-			break;
-			case Device:
-				inverse = CuInverse();
-				break;
-			default:
-				INVALID_ARCHITECTURE_EXCEPTION
-			}
-			return inverse;
-		}
-
-		template<typename U>
-		std::shared_ptr<Matrix<U>> Cast()
-		{
-			std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(nRows_, nColumns_, Host);
-			switch (buffer->GetArchitecture())
-			{
-			case Host:
-			{
-				HostCast(C->buffer->GetPtr(), buffer->GetPtr());
-			}
-			break;
-			case Device:
-				this->Move(Host);
-				HostCast(C->buffer->GetPtr(), buffer->GetPtr());
-				this->Move(Device);
-				break;
-			default:
-				INVALID_ARCHITECTURE_EXCEPTION
-			}
-
-			return C;
-		}
+		template<class U>
+		std::shared_ptr<Matrix<U>> Cast();
 
 	private:
-		__matrix__ CuTranspose();
+		__matrix__<T> CuTranspose();
 
-		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
-		std::shared_ptr<Matrix<U>> CuInverse()
-		{
-			CudaManager& manager = CudaManager::GetInstance();
-			cusolverStatus_t  status = cusolverStatus_t::CUSOLVER_STATUS_SUCCESS;
-			std::shared_ptr<Matrix<U>> inverse = Matrix<U>::Identity(nRows_, Device);
-
-			cudaStream_t stream = NULL;
-			cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-			cusolverDnSetStream(manager.GetCusolverHandle(), stream);
-
-			// Copy buffer because LU factorization writes over it
-			std::shared_ptr<Matrix<U>> LU = Matrix<U>::Build(nRows_, nColumns_, Device);
-			cudaMemcpy(LU->buffer->GetPtr(), buffer->GetPtr(), (buffer->GetCapacity()) * sizeof(U), cudaMemcpyDeviceToDevice);
-
-			// Calculate buffer size for LU factorization algorithm
-			int bufferSize = 0;
-			status = cusolverDnSgetrf_bufferSize(manager.GetCusolverHandle(),
-				nRows_,
-				nRows_,
-				(float*)LU->buffer->GetPtr(),
-				nRows_,
-				&bufferSize);
-			cudaDeviceSynchronize();
-			checkCusolverStatus(status);
-
-			// Allocate worker
-			float* workspace;
-			cudaMalloc(&workspace, bufferSize * sizeof(float));
-			checkCusolverStatus(status);
-
-			int *pivots = nullptr;
-			cudaMalloc(&pivots, nRows_ * sizeof(int));
-
-			int *info = nullptr;
-			cudaMalloc(&info, sizeof(int));
-			cudaMemset(info, 0, sizeof(int));
-
-			// Calculate LU factorization
-			status = cusolverDnSgetrf(manager.GetCusolverHandle(),
-				nRows_,
-				nRows_,
-				(float*)LU->buffer->GetPtr(),
-				nRows_,
-				workspace,
-				pivots,
-				info);
-			cudaDeviceSynchronize();
-			checkCusolverStatus(status);
-
-			status = cusolverDnSgetrs(manager.GetCusolverHandle(),
-				CUBLAS_OP_N,
-				nRows_,
-				nRows_,
-				(float*)LU->buffer->GetPtr(),
-				nRows_,
-				pivots,
-				(float*)inverse->buffer->GetPtr(),
-				nRows_,
-				info);
-			cudaDeviceSynchronize();
-			checkCusolverStatus(status);
-
-			return inverse;
-		}
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>> CuInverse();
 	
 		//TODO replace with cuda version
-		template<typename U>
+		template<class U>
 		void HostCast(U* const destination, const T* source)
 		{
 			for (int pos = 0; pos < nRows_*nColumns_; pos++)
@@ -274,7 +112,7 @@ namespace XBlas
 	};
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::Build(long nRows, long nColumns, Architecture arch)
+	__matrix__<T> Matrix<T>::Build(long nRows, long nColumns, Architecture arch)
 	{
 		if (nRows*nColumns < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
@@ -292,7 +130,7 @@ namespace XBlas
 	}
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::Build(__buffer__ memoryBuffer, long nRows, long nColumns)
+	__matrix__<T> Matrix<T>::Build(__buffer__<T> memoryBuffer, long nRows, long nColumns)
 	{
 		if (nRows*nColumns < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
@@ -301,7 +139,7 @@ namespace XBlas
 	}
 
 	template<class T>
-	Matrix<T>::Matrix(__buffer__ memoryBuffer, long nRows, long nColumns)
+	Matrix<T>::Matrix(__buffer__<T> memoryBuffer, long nRows, long nColumns)
 	{
 		if (nRows*nColumns < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
@@ -314,12 +152,12 @@ namespace XBlas
 	}
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::Identity(long nRows, Architecture arch)
+	__matrix__<T> Matrix<T>::Identity(long nRows, Architecture arch)
 	{
 		if (nRows < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
 
-		// TODO : make a device version
+		// TODO : make a cuda version
 		auto identity = std::shared_ptr<Matrix<T>>(new Matrix<T>(nRows, nRows, Host));
 		//cudaMemset(identity->buffer->GetPtr(), 0, nRows*nRows * sizeof(T));
 		for (int i = 0; i < nRows; ++i)
@@ -385,7 +223,74 @@ namespace XBlas
 	}
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::Transpose()
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>>  Matrix<T>::operator* (std::shared_ptr<Matrix<U>> B)
+	{
+		//TODO refactor this
+		std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(this->nRows_, B->nColumns(), Architecture::Device);
+
+		CudaManager& manager = CudaManager::GetInstance();
+		cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
+		int leadingDimensionB = B->nRows();
+		int leadingDimensionC = C->nRows();
+		int nColC = C->nColumns();
+		float alpha = 1.0f;
+		float beta = 0.0f;
+
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+			this->Move(Device);
+			B->Move(Device);
+
+			status = cublasSgemm(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				leadingDimensionB,
+				nColC,
+				leadingDimensionC,
+				&alpha,
+				(float*)this->buffer->GetPtr(),
+				leadingDimensionB,
+				(float*)B->buffer->GetPtr(),
+				leadingDimensionC,
+				&beta,
+				(float*)C->buffer->GetPtr(),
+				leadingDimensionB);
+			checkCudaStatus(status);
+
+			this->Move(Host);
+			B->Move(Host);
+			C->Move(Host);
+
+			break;
+		case Device:
+
+			status = cublasSgemm(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				leadingDimensionB,
+				nColC,
+				leadingDimensionC,
+				&alpha,
+				(float*)B->buffer->GetPtr(),
+				leadingDimensionB,
+				(float*)C->buffer->GetPtr(),
+				leadingDimensionC,
+				&beta,
+				(float*)this->buffer->GetPtr(),
+				leadingDimensionB);
+			checkCudaStatus(status);
+			break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
+
+		return C;
+	}
+
+	template<class T>
+	__matrix__<T> Matrix<T>::Transpose()
 	{
 		std::shared_ptr<Matrix<T>> C;
 		switch (buffer->GetArchitecture())
@@ -413,10 +318,125 @@ namespace XBlas
 
 	}
 
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>> Matrix<T>::Inverse()
+	{
+		std::shared_ptr<Matrix<U>> inverse;
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+		{
+			this->Move(Device);
+			inverse = CuInverse();
+			this->Move(Host);
+			inverse->Move(Host);
+		}
+		break;
+		case Device:
+			inverse = CuInverse();
+			break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
+		return inverse;
+	}
+
+	template<class T>
+	template<class U>
+	std::shared_ptr<Matrix<U>> Matrix<T>::Cast()
+	{
+		std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(nRows_, nColumns_, Host);
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+		{
+			HostCast(C->buffer->GetPtr(), buffer->GetPtr());
+		}
+		break;
+		case Device:
+			this->Move(Host);
+			HostCast(C->buffer->GetPtr(), buffer->GetPtr());
+			this->Move(Device);
+			break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
+
+		return C;
+	}
+
 	// Helper funtions on device
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::CuTranspose()
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>> Matrix<T>::CuInverse()
+	{
+		CudaManager& manager = CudaManager::GetInstance();
+		cusolverStatus_t  status = cusolverStatus_t::CUSOLVER_STATUS_SUCCESS;
+		std::shared_ptr<Matrix<U>> inverse = Matrix<U>::Identity(nRows_, Device);
+
+		cudaStream_t stream = NULL;
+		cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+		cusolverDnSetStream(manager.GetCusolverHandle(), stream);
+
+		// Copy buffer because LU factorization writes over it
+		std::shared_ptr<Matrix<U>> LU = Matrix<U>::Build(nRows_, nColumns_, Device);
+		cudaMemcpy(LU->buffer->GetPtr(), buffer->GetPtr(), (buffer->GetCapacity()) * sizeof(U), cudaMemcpyDeviceToDevice);
+
+		// Calculate buffer size for LU factorization algorithm
+		int bufferSize = 0;
+		status = cusolverDnSgetrf_bufferSize(manager.GetCusolverHandle(),
+			nRows_,
+			nRows_,
+			(float*)LU->buffer->GetPtr(),
+			nRows_,
+			&bufferSize);
+		cudaDeviceSynchronize();
+		checkCusolverStatus(status);
+
+		// Allocate worker
+		float* workspace;
+		cudaMalloc(&workspace, bufferSize * sizeof(float));
+		checkCusolverStatus(status);
+
+		int *pivots = nullptr;
+		cudaMalloc(&pivots, nRows_ * sizeof(int));
+
+		int *info = nullptr;
+		cudaMalloc(&info, sizeof(int));
+		cudaMemset(info, 0, sizeof(int));
+
+		// Calculate LU factorization
+		status = cusolverDnSgetrf(manager.GetCusolverHandle(),
+			nRows_,
+			nRows_,
+			(float*)LU->buffer->GetPtr(),
+			nRows_,
+			workspace,
+			pivots,
+			info);
+		cudaDeviceSynchronize();
+		checkCusolverStatus(status);
+
+		status = cusolverDnSgetrs(manager.GetCusolverHandle(),
+			CUBLAS_OP_N,
+			nRows_,
+			nRows_,
+			(float*)LU->buffer->GetPtr(),
+			nRows_,
+			pivots,
+			(float*)inverse->buffer->GetPtr(),
+			nRows_,
+			info);
+		cudaDeviceSynchronize();
+		checkCusolverStatus(status);
+
+		return inverse;
+	}
+
+	template<class T>
+	__matrix__<T> Matrix<T>::CuTranspose()
 	{
 		std::shared_ptr<Matrix<T>> C = Matrix<T>::Build(this->nColumns_, this->nRows_, Architecture::Device);
 
