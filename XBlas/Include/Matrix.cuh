@@ -12,6 +12,7 @@
 #include "MatrixColumn.cuh"
 #include <cusolverDn.h>
 
+//TODO: profiling
 
 #ifndef XBLAS_MATRIX
 #define XBLAS_MATRIX
@@ -86,6 +87,15 @@ namespace XBlas
 		const __column__<T>& operator [] (size_t index) const;
 
 		__matrix__<T> Transpose();
+
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>>  operator+ (const std::shared_ptr<Matrix<U>> B);
+
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>>  Add (const std::shared_ptr<Matrix<U>> B, float alpha, float beta);
+
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>>  Multiply (const std::shared_ptr<Matrix<U>> B, float alpha);
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
 		std::shared_ptr<Matrix<U>>  operator* (const std::shared_ptr<Matrix<U>> B);
@@ -239,7 +249,79 @@ namespace XBlas
 
 	template<class T>
 	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>>  Matrix<T>::operator+ (const std::shared_ptr<Matrix<U>> B)
+	{
+		return this->Add(B, 1.0, 1.0);
+	}
+
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>>  Matrix<T>::Add (const std::shared_ptr<Matrix<U>> B, float alpha, float beta)
+	{
+		std::shared_ptr<Matrix<T>> C = Matrix<T>::Build(this->nColumns_, this->nRows_, Architecture::Device);
+
+		CudaManager& manager = CudaManager::GetInstance();
+		cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
+		int leadingDimensionA = this->nRows_;
+		int leadingDimensionC = C->nRows();
+		int nColC = C->nColumns();
+
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+		{
+			this->Move(Device);
+
+			status = cublasSgeam(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				nRows_,
+				nColumns_,
+				&alpha,
+				(float*)this->buffer->GetPtr(), leadingDimensionA,
+				&beta,
+				(float*)this->buffer->GetPtr(), leadingDimensionA,
+				(float*)C->buffer->GetPtr(), leadingDimensionC);
+
+			checkCudaStatus(status);
+
+			this->Move(Host);
+			C->Move(Host);
+		}
+		break;
+		case Device:
+		{
+			status = cublasSgeam(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				CUBLAS_OP_N,
+				nRows_,
+				nColumns_,
+				&alpha,
+				(float*)this->buffer->GetPtr(), leadingDimensionA,
+				&beta,
+				(float*)this->buffer->GetPtr(), leadingDimensionA,
+				(float*)C->buffer->GetPtr(), leadingDimensionC);
+
+			checkCudaStatus(status);
+		}
+		break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
+
+		return C;
+	}
+
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
 	std::shared_ptr<Matrix<U>>  Matrix<T>::operator* (const std::shared_ptr<Matrix<U>> B)
+	{
+		return this->Multiply(B, 1.0);
+	}
+
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Matrix<U>>  Matrix<T>::Multiply(const std::shared_ptr<Matrix<U>> B, float alpha)
 	{
 		//TODO refactor this
 		std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(this->nRows_, B->nColumns(), Architecture::Device);
@@ -249,7 +331,6 @@ namespace XBlas
 		int leadingDimensionB = B->nRows();
 		int leadingDimensionC = C->nRows();
 		int nColC = C->nColumns();
-		float alpha = 1.0f;
 		float beta = 0.0f;
 
 		switch (buffer->GetArchitecture())
