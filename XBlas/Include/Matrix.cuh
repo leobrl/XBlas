@@ -44,7 +44,7 @@ namespace XBlas
 		std::vector<__column__<T>> columns;
 
 		Matrix(size_t nRows, size_t nColumns, Architecture arch);
-		Matrix(__buffer__<T> memoryBuffer, long nRows, long nColumns);
+		Matrix(const __buffer__<T> memoryBuffer, long nRows, long nColumns);
 
 		void SetColumns();
 
@@ -58,7 +58,9 @@ namespace XBlas
 
 		static __matrix__<T> Build(long nRows, long nColumns, Architecture arch);
 
-		static __matrix__<T> Build(__buffer__<T> memoryBuffer, long nRows, long nColumns);
+		static __matrix__<T> Build(const __buffer__<T> memoryBuffer, long nRows, long nColumns);
+
+		static __matrix__<T> Diagonal(const std::vector<T> diag, Architecture arch);
 
 		static __matrix__<T> Identity(long nRows, Architecture arch);
 
@@ -86,10 +88,10 @@ namespace XBlas
 		__matrix__<T> Transpose();
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
-		std::shared_ptr<Matrix<U>>  operator* (std::shared_ptr<Matrix<U>> B);
+		std::shared_ptr<Matrix<U>>  operator* (const std::shared_ptr<Matrix<U>> B);
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
-		std::shared_ptr<Vector<U>>  operator* (std::shared_ptr<Vector<U>> V);
+		std::shared_ptr<Vector<U>>  operator* (const std::shared_ptr<Vector<U>> V);
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
 		std::shared_ptr<Matrix<U>> Inverse();
@@ -133,7 +135,7 @@ namespace XBlas
 	}
 
 	template<class T>
-	__matrix__<T> Matrix<T>::Build(__buffer__<T> memoryBuffer, long nRows, long nColumns)
+	__matrix__<T> Matrix<T>::Build(const __buffer__<T> memoryBuffer, long nRows, long nColumns)
 	{
 		if (nRows*nColumns < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
@@ -142,7 +144,7 @@ namespace XBlas
 	}
 
 	template<class T>
-	Matrix<T>::Matrix(__buffer__<T> memoryBuffer, long nRows, long nColumns)
+	Matrix<T>::Matrix(const __buffer__<T> memoryBuffer, long nRows, long nColumns)
 	{
 		if (nRows*nColumns < 0)
 			throw std::out_of_range("Marix dimensions must be positive numbers");
@@ -155,22 +157,20 @@ namespace XBlas
 	}
 
 	template<class T>
-	__matrix__<T> Matrix<T>::Identity(long nRows, Architecture arch)
+	__matrix__<T> Matrix<T>::Diagonal(const std::vector<T> diag, Architecture arch)
 	{
-		if (nRows < 0)
-			throw std::out_of_range("Marix dimensions must be positive numbers");
-
 		// TODO : make a cuda version
-		auto identity = std::shared_ptr<Matrix<T>>(new Matrix<T>(nRows, nRows, Host));
+		int nRows = diag.size();
+		auto diagonalMatrix = std::shared_ptr<Matrix<T>>(new Matrix<T>(nRows, nRows, Host));
 		//cudaMemset(identity->buffer->GetPtr(), 0, nRows*nRows * sizeof(T));
 		for (int i = 0; i < nRows; ++i)
 		{
 			for (int j = 0; j < nRows; ++j)
 			{
 				if (i == j)
-					(identity->operator[](i))->operator[](j) = 1.0;
+					(diagonalMatrix->operator[](i))->operator[](j) = diag[i];
 				else
-					(identity->operator[](i))->operator[](j) = 0.0;
+					(diagonalMatrix->operator[](i))->operator[](j) = 0.0;
 			}
 		}
 
@@ -179,13 +179,25 @@ namespace XBlas
 		case XBlas::Host:
 			break;
 		case XBlas::Device:
-			identity->Move(Device);
+			diagonalMatrix->Move(Device);
 			break;
 		default:
 			INVALID_ARCHITECTURE_EXCEPTION
 		}
 
-		return identity;
+		return diagonalMatrix;
+	}
+
+	template<class T>
+	__matrix__<T> Matrix<T>::Identity(long nRows, Architecture arch)
+	{
+		if (nRows < 0)
+			throw std::out_of_range("Marix dimensions must be positive numbers");
+
+		std::vector<T> diag(nRows);
+		std::fill(diag.begin(), diag.end(), 1.0);
+
+		return Diagonal(diag, arch);
 	}
 
 	template<class T>
@@ -227,7 +239,7 @@ namespace XBlas
 
 	template<class T>
 	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
-	std::shared_ptr<Matrix<U>>  Matrix<T>::operator* (std::shared_ptr<Matrix<U>> B)
+	std::shared_ptr<Matrix<U>>  Matrix<T>::operator* (const std::shared_ptr<Matrix<U>> B)
 	{
 		//TODO refactor this
 		std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(this->nRows_, B->nColumns(), Architecture::Device);
@@ -294,7 +306,7 @@ namespace XBlas
 
 	template<class T>
 	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
-	std::shared_ptr<Vector<U>>  Matrix<T>::operator* (std::shared_ptr<Vector<U>> X)
+	std::shared_ptr<Vector<U>>  Matrix<T>::operator* (const std::shared_ptr<Vector<U>> X)
 	{
 		std::shared_ptr<Vector<U>> Y = XBlas::Vector<U>::Build(nRows_, Device);
 
@@ -356,7 +368,6 @@ namespace XBlas
 		}
 		return Y;
 	}
-
 
 	template<class T>
 	__matrix__<T> Matrix<T>::Transpose()

@@ -231,10 +231,28 @@ TEST(MatrixTest, Transpose)
 
 }
 
-TEST(MatrixTest, Identity)
+TEST(MatrixTest, Identity_int)
 {
 	hostDefaultMatrixInput;
 	std::shared_ptr<XBlas::Matrix<int>> matrix = XBlas::Matrix<int>::Identity(nRows, arch);
+
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			int actual = (matrix->operator[](row))->operator[](col);
+			if (col == row)
+				ASSERT_DOUBLE_EQ(actual, 1);
+			else
+				ASSERT_DOUBLE_EQ(actual, 0);
+		}
+	}
+}
+
+TEST(MatrixTest, Identity_float)
+{
+	hostDefaultMatrixInput;
+	std::shared_ptr<XBlas::Matrix<float>> matrix = XBlas::Matrix<float>::Identity(nRows, arch);
 
 	for (int row = 0; row < nRows; ++row)
 	{
