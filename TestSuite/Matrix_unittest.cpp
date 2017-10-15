@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+
 #include<memory>
 #include<exception>
 #include "Common.h"
+#include <stdlib.h>
 #include "../XBlas/Include/Matrix.cuh"
 
 TEST(MatrixTest, Allocation)
@@ -89,6 +91,34 @@ TEST(HostMatrixTest, MoveOperation)
 	}
 }
 
+TEST(MatrixTest, CastOperation)
+{
+	hostDefaultMatrixInput;
+
+	std::shared_ptr<XBlas::Matrix<int>> intMatrix = XBlas::Matrix<int>::Build(nRows, nColumns, arch);
+
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			(intMatrix->operator[](row))->operator[](col) = row + col;
+		}
+	}
+
+	std::shared_ptr<XBlas::Matrix<float>> floatMatrix = intMatrix->Cast<float>();
+
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			float actual = (floatMatrix->operator[](row))->operator[](col);
+			float expected = (float)(row + col);
+			ASSERT_FLOAT_EQ(actual, expected);
+		}
+	}
+
+}
+
 TEST(MatrixTest, MultiplyByScalar)
 {
 	FAIL();
@@ -99,7 +129,7 @@ TEST(MatrixTest, MultiplyByVector)
 	FAIL();
 }
 
-TEST(MatrixTest, MultiplyByMatrix)
+TEST(MatrixTest, MultiplyByMatrix_float)
 {
 	hostDefaultMatrixInput;
 	std::shared_ptr<XBlas::Matrix<float>> matrix = XBlas::Matrix<float>::Build(nRows, nColumns, arch);
@@ -121,6 +151,34 @@ TEST(MatrixTest, MultiplyByMatrix)
 		{
 			double actual = (squaredMatrix->operator[](col))->operator[](row);
 			ASSERT_DOUBLE_EQ(actual, expected);
+		}
+	}
+}
+
+TEST(MatrixTest, MultiplyByMatrix_int)
+{
+	hostDefaultMatrixInput;
+
+	std::shared_ptr<XBlas::Matrix<int>> intMatrix = XBlas::Matrix<int>::Build(nRows, nColumns, arch);
+
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			(intMatrix->operator[](row))->operator[](col) = 1;
+		}
+	}
+
+	std::shared_ptr<XBlas::Matrix<float>> floatMatrix = intMatrix->Cast<float>();
+	std::shared_ptr<XBlas::Matrix<float>> squaredMatrix = floatMatrix->operator*(floatMatrix);
+
+	double expected = 3;
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			double actual = (squaredMatrix->operator[](col))->operator[](row);
+			ASSERT_FLOAT_EQ(actual, expected);
 		}
 	}
 }
@@ -147,7 +205,7 @@ TEST(MatrixTest, Transpose)
 		{
 			int expected = (matrix->operator[](row))->operator[](col);
 			int actual = (transposedMatrix->operator[](col))->operator[](row);
-			ASSERT_DOUBLE_EQ(actual, expected);
+			ASSERT_FLOAT_EQ(actual, expected);
 		}
 	}
 
@@ -174,7 +232,8 @@ TEST(MatrixTest, Identity)
 TEST(MatrixTest, Inverse)
 {
 	hostDefaultMatrixInput;
-	std::shared_ptr<XBlas::Matrix<float>> matrix = XBlas::Matrix<float>::Build(nRows, nColumns, arch);
+	using type = float;
+	std::shared_ptr<XBlas::Matrix<type>> matrix = XBlas::Matrix<type>::Build(nRows, nColumns, arch);
 	int c = 0;
 	float values[] = { 0.0, 1.0, -3.0, -3.0, -4.0, 4.0, -2.0, -2.0, 1.0 };
 	for (int col = 0; col < nColumns; ++col)
@@ -185,16 +244,16 @@ TEST(MatrixTest, Inverse)
 		}
 	}
 
-	std::shared_ptr<XBlas::Matrix<float>> inverse = matrix->Inverse();
+	std::shared_ptr<XBlas::Matrix<type>> inverse = matrix->Inverse();
 
-	int expected[] = { 4, 5, -8, -5, -6, 9, -2, -2, 3 };
+	int expectedValues[] = { 4, 5, -8, -5, -6, 9, -2, -2, 3 };
 	for (int row = 0; row < nRows; ++row)
 	{
 		for (int col = 0; col < nColumns; ++col)
 		{
 			float actual = (inverse->operator[](col))->operator[](row);
-			std::cout << actual << " ";
-			//			ASSERT_DOUBLE_EQ(actual, expected[col + row*nRows]);
+			float expected = expectedValues[row + col*nRows];
+			ASSERT_LE(std::abs(actual - expected), 0.00001);
 		}
 		std::cout << std::endl;
 	}

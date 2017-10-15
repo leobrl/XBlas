@@ -15,8 +15,6 @@ namespace XBlas
 		#define BUFFER_PTR (buffer->GetPtr())
 	public:
 		const virtual size_t Length() const = 0;
-
-	protected:
 		std::shared_ptr<MemoryBuffer<T>> buffer;
 
 	public:

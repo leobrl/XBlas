@@ -1,7 +1,11 @@
+#include <cuda.h>
+#include <device_launch_parameters.h>
 #include <cuda_runtime.h>
+
 #include <exception>
 #include <vector>
 #include <string>
+#include <type_traits>
 #include "CudaManager.cuh"
 #include "Architecture.hpp"
 #include "MemoryLayout.cuh"
@@ -19,10 +23,11 @@ namespace XBlas
 	class  __declspec(dllexport) Matrix : public MemoryLayout<T>
 	{
 		static_assert(sizeof(T) == 4, "Matrix only supports type with size of 32 bits.");
+		static_assert(std::is_arithmetic<T>::value, "Matrix only supports arithmetic types.");
 
-		//template <typename T> struct support_inversion { enum { value = false }; };
-		//template <> struct support_inversion<int> { enum { value = false }; };
-		//template <> struct support_inversion<float> { enum { value = true }; };
+		//template <class T> struct supports_inversion { enum { value = false }; };
+		//template <> struct supports_inversion<int> { enum { value = false }; };
+		//template <> struct supports_inversion<float> { enum { value = true }; };
 
 		using __matrix__ = std::shared_ptr<Matrix<T>>;
 		using __buffer__ = std::shared_ptr<MemoryBuffer<T>>;
@@ -74,15 +79,198 @@ namespace XBlas
 
 		const __column__& operator [] (size_t index) const;
 
-		__matrix__ operator* (std::shared_ptr<Matrix<T>> B);
-
 		__matrix__ Transpose();
 
-		__matrix__ Inverse();
+		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>>  operator* (std::shared_ptr<Matrix<U>> B)
+		{
+			//TODO refactor this
+			std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(this->nRows_, B->nColumns(), Architecture::Device);
+
+			CudaManager& manager = CudaManager::GetInstance();
+			cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
+			int leadingDimensionB = B->nRows();
+			int leadingDimensionC = C->nRows();
+			int nColC = C->nColumns();
+			float alpha = 1.0f;
+			float beta = 0.0f;
+
+			switch (buffer->GetArchitecture())
+			{
+			case Host:
+				this->Move(Device);
+				B->Move(Device);
+
+				status = cublasSgemm(manager.GetCublasHandle(),
+					CUBLAS_OP_N,
+					CUBLAS_OP_N,
+					leadingDimensionB,
+					nColC,
+					leadingDimensionC,
+					&alpha,
+					(float*)this->buffer->GetPtr(),
+					leadingDimensionB,
+					(float*)B->buffer->GetPtr(),
+					leadingDimensionC,
+					&beta,
+					(float*)C->buffer->GetPtr(),
+					leadingDimensionB);
+				checkCudaStatus(status);
+
+				this->Move(Host);
+				B->Move(Host);
+				C->Move(Host);
+
+				break;
+			case Device:
+
+				status = cublasSgemm(manager.GetCublasHandle(),
+					CUBLAS_OP_N,
+					CUBLAS_OP_N,
+					leadingDimensionB,
+					nColC,
+					leadingDimensionC,
+					&alpha,
+					(float*)B->buffer->GetPtr(),
+					leadingDimensionB,
+					(float*)C->buffer->GetPtr(),
+					leadingDimensionC,
+					&beta,
+					(float*)this->buffer->GetPtr(),
+					leadingDimensionB);
+				checkCudaStatus(status);
+				break;
+			default:
+				INVALID_ARCHITECTURE_EXCEPTION
+			}
+
+			return C;
+		}
+
+		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>> Inverse()
+		{
+			std::shared_ptr<Matrix<U>> inverse;
+			switch (buffer->GetArchitecture())
+			{
+			case Host:
+			{
+				this->Move(Device);
+				inverse = CuInverse();
+				this->Move(Host);
+				inverse->Move(Host);
+			}
+			break;
+			case Device:
+				inverse = CuInverse();
+				break;
+			default:
+				INVALID_ARCHITECTURE_EXCEPTION
+			}
+			return inverse;
+		}
+
+		template<typename U>
+		std::shared_ptr<Matrix<U>> Cast()
+		{
+			std::shared_ptr<Matrix<U>> C = Matrix<U>::Build(nRows_, nColumns_, Host);
+			switch (buffer->GetArchitecture())
+			{
+			case Host:
+			{
+				HostCast(C->buffer->GetPtr(), buffer->GetPtr());
+			}
+			break;
+			case Device:
+				this->Move(Host);
+				HostCast(C->buffer->GetPtr(), buffer->GetPtr());
+				this->Move(Device);
+				break;
+			default:
+				INVALID_ARCHITECTURE_EXCEPTION
+			}
+
+			return C;
+		}
 
 	private:
-		__matrix__ CuInverse();
 		__matrix__ CuTranspose();
+
+		template<typename U = T, typename = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Matrix<U>> CuInverse()
+		{
+			CudaManager& manager = CudaManager::GetInstance();
+			cusolverStatus_t  status = cusolverStatus_t::CUSOLVER_STATUS_SUCCESS;
+			std::shared_ptr<Matrix<U>> inverse = Matrix<U>::Identity(nRows_, Device);
+
+			cudaStream_t stream = NULL;
+			cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+			cusolverDnSetStream(manager.GetCusolverHandle(), stream);
+
+			// Copy buffer because LU factorization writes over it
+			std::shared_ptr<Matrix<U>> LU = Matrix<U>::Build(nRows_, nColumns_, Device);
+			cudaMemcpy(LU->buffer->GetPtr(), buffer->GetPtr(), (buffer->GetCapacity()) * sizeof(U), cudaMemcpyDeviceToDevice);
+
+			// Calculate buffer size for LU factorization algorithm
+			int bufferSize = 0;
+			status = cusolverDnSgetrf_bufferSize(manager.GetCusolverHandle(),
+				nRows_,
+				nRows_,
+				(float*)LU->buffer->GetPtr(),
+				nRows_,
+				&bufferSize);
+			cudaDeviceSynchronize();
+			checkCusolverStatus(status);
+
+			// Allocate worker
+			float* workspace;
+			cudaMalloc(&workspace, bufferSize * sizeof(float));
+			checkCusolverStatus(status);
+
+			int *pivots = nullptr;
+			cudaMalloc(&pivots, nRows_ * sizeof(int));
+
+			int *info = nullptr;
+			cudaMalloc(&info, sizeof(int));
+			cudaMemset(info, 0, sizeof(int));
+
+			// Calculate LU factorization
+			status = cusolverDnSgetrf(manager.GetCusolverHandle(),
+				nRows_,
+				nRows_,
+				(float*)LU->buffer->GetPtr(),
+				nRows_,
+				workspace,
+				pivots,
+				info);
+			cudaDeviceSynchronize();
+			checkCusolverStatus(status);
+
+			status = cusolverDnSgetrs(manager.GetCusolverHandle(),
+				CUBLAS_OP_N,
+				nRows_,
+				nRows_,
+				(float*)LU->buffer->GetPtr(),
+				nRows_,
+				pivots,
+				(float*)inverse->buffer->GetPtr(),
+				nRows_,
+				info);
+			cudaDeviceSynchronize();
+			checkCusolverStatus(status);
+
+			return inverse;
+		}
+	
+		//TODO replace with cuda version
+		template<typename U>
+		void HostCast(U* const destination, const T* source)
+		{
+			for (int pos = 0; pos < nRows_*nColumns_; pos++)
+			{
+				destination[pos] = (U)source[pos];
+			}
+		}
 	};
 
 	template<class T>
@@ -197,72 +385,6 @@ namespace XBlas
 	}
 
 	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::operator* (std::shared_ptr<Matrix<T>> B)
-	{
-		//TODO refactor this
-		std::shared_ptr<Matrix<T>> C = Matrix<T>::Build(this->nRows_, B->nColumns(), Architecture::Device);
-
-		CudaManager& manager = CudaManager::GetInstance();
-		cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
-		int leadingDimensionB = B->nRows();
-		int leadingDimensionC = C->nRows();
-		int nColC = C->nColumns();
-		float alpha = 1.0f;
-		float beta = 0.0f;
-
-		switch (buffer->GetArchitecture())
-		{
-		case Host:
-			this->Move(Device);
-			B->Move(Device);
-
-			status = cublasSgemm(manager.GetCublasHandle(),
-				CUBLAS_OP_N,
-				CUBLAS_OP_N,
-				leadingDimensionB,
-				nColC,
-				leadingDimensionC,
-				&alpha,
-				(float*)this->buffer->GetPtr(),
-				leadingDimensionB,
-				(float*)B->buffer->GetPtr(),
-				leadingDimensionC,
-				&beta,
-				(float*)C->buffer->GetPtr(),
-				leadingDimensionB);
-			checkCudaStatus(status);
-
-			this->Move(Host);
-			B->Move(Host);
-			C->Move(Host);
-
-			break;
-		case Device:
-
-			status = cublasSgemm(manager.GetCublasHandle(),
-				CUBLAS_OP_N,
-				CUBLAS_OP_N,
-				leadingDimensionB,
-				nColC,
-				leadingDimensionC,
-				&alpha,
-				(float*)B->buffer->GetPtr(),
-				leadingDimensionB,
-				(float*)C->buffer->GetPtr(),
-				leadingDimensionC,
-				&beta,
-				(float*)this->buffer->GetPtr(),
-				leadingDimensionB);
-			checkCudaStatus(status);
-			break;
-		default:
-			INVALID_ARCHITECTURE_EXCEPTION
-		}
-
-		return C;
-	}
-
-	template<class T>
 	std::shared_ptr<Matrix<T>> Matrix<T>::Transpose()
 	{
 		std::shared_ptr<Matrix<T>> C;
@@ -289,29 +411,6 @@ namespace XBlas
 
 		return C;
 
-	}
-
-	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::Inverse()
-	{
-		std::shared_ptr<Matrix<T>> inverse;
-		switch (buffer->GetArchitecture())
-		{
-		case Host:
-		{
-			this->Move(Device);
-			inverse = CuInverse();
-			this->Move(Host);
-			inverse->Move(Host);
-		}
-		break;
-		case Device:
-			inverse = CuInverse();
-			break;
-		default:
-			INVALID_ARCHITECTURE_EXCEPTION
-		}
-		return inverse;
 	}
 
 	// Helper funtions on device
@@ -342,72 +441,6 @@ namespace XBlas
 
 		checkCudaStatus(status);
 		return C;
-	}
-
-	template<class T>
-	std::shared_ptr<Matrix<T>> Matrix<T>::CuInverse()
-	{
-		CudaManager& manager = CudaManager::GetInstance();
-		cusolverStatus_t  status = cusolverStatus_t::CUSOLVER_STATUS_SUCCESS;
-		std::shared_ptr<Matrix<T>> inverse = Matrix<T>::Identity(nRows_, Device);
-
-		cudaStream_t stream = NULL;
-		cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-		cusolverDnSetStream(manager.GetCusolverHandle(), stream);
-
-		// Copy buffer because LU factorization writes over it
-		std::shared_ptr<Matrix<T>> LU = Matrix<T>::Build(nRows_, nColumns_, Device);
-		cudaMemcpy(LU->buffer->GetPtr(), buffer->GetPtr(), (buffer->GetCapacity()) * sizeof(T), cudaMemcpyDeviceToDevice);
-
-		// Calculate buffer size for LU factorization algorithm
-		int bufferSize = 0;
-		status = cusolverDnSgetrf_bufferSize(manager.GetCusolverHandle(),
-			nRows_,
-			nRows_,
-			(float*)LU->buffer->GetPtr(),
-			nRows_,
-			&bufferSize);
-		cudaDeviceSynchronize();
-		checkCusolverStatus(status);
-
-		// Allocate worker
-		float* workspace;
-		cudaMalloc(&workspace, bufferSize * sizeof(float));
-		checkCusolverStatus(status);
-
-		int *pivots = nullptr;
-		cudaMalloc(&pivots, nRows_ * sizeof(int));
-
-		int *info = nullptr;
-		cudaMalloc(&info, sizeof(int));
-		cudaMemset(info, 0, sizeof(int));
-
-		// Calculate LU factorization
-		status = cusolverDnSgetrf(manager.GetCusolverHandle(),
-			nRows_,
-			nRows_,
-			(float*)LU->buffer->GetPtr(),
-			nRows_,
-			workspace,
-			pivots,
-			info);
-		cudaDeviceSynchronize();
-		checkCusolverStatus(status);
-		
-		status = cusolverDnSgetrs(manager.GetCusolverHandle(),
-			CUBLAS_OP_N,
-			nRows_,
-			nRows_,
-			(float*) LU->buffer->GetPtr(),
-			nRows_,
-			pivots,
-			(float*)inverse->buffer->GetPtr(),
-			nRows_,
-			info);
-		cudaDeviceSynchronize();
-		checkCusolverStatus(status);
-		
-		return inverse;
 	}
 
 	// for testing
