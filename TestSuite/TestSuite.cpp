@@ -10,7 +10,7 @@
 int main(int ac, char* av[])
 {
 	testing::InitGoogleTest(&ac, av);
-//	testing::GTEST_FLAG(filter) = "*MultiplyByMatrix_int";
+	testing::GTEST_FLAG(filter) = "*MultiplyByVector";
 	RUN_ALL_TESTS();
 }
 

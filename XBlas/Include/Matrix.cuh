@@ -89,6 +89,9 @@ namespace XBlas
 		std::shared_ptr<Matrix<U>>  operator* (std::shared_ptr<Matrix<U>> B);
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		std::shared_ptr<Vector<U>>  operator* (std::shared_ptr<Vector<U>> V);
+
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
 		std::shared_ptr<Matrix<U>> Inverse();
 
 		template<class U>
@@ -288,6 +291,72 @@ namespace XBlas
 
 		return C;
 	}
+
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	std::shared_ptr<Vector<U>>  Matrix<T>::operator* (std::shared_ptr<Vector<U>> X)
+	{
+		std::shared_ptr<Vector<U>> Y = XBlas::Vector<U>::Build(nRows_, Device);
+
+		CudaManager& manager = CudaManager::GetInstance();
+		cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
+
+		int m = nRows_;
+		int n = nColumns_;
+		float alpha = 1.0;
+		int lda = nRows_;
+		int incx = 1;
+		float beta = 0.0;
+		int incy = 1;
+
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+			this->Move(Device);
+			X->Move(Device);
+
+			status = cublasSgemv(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				m,
+				n,
+				&alpha,
+				(float*)buffer->GetPtr(),
+				lda,
+				(float*) X->buffer->GetPtr(),
+				incx,
+				&beta,
+				(float*)Y->buffer->GetPtr(),
+				incy);
+			checkCudaStatus(status);
+
+			this->Move(Host);
+			X->Move(Host);
+			Y->Move(Host);
+			
+			break;
+		case Device:
+
+			status = cublasSgemv(manager.GetCublasHandle(),
+				CUBLAS_OP_N,
+				m,
+				n,
+				&alpha,
+				(float*)buffer->GetPtr(),
+				lda,
+				(float*)X->buffer->GetPtr(),
+				incx,
+				&beta,
+				(float*)Y->buffer->GetPtr(),
+				incy);
+
+			checkCudaStatus(status);
+			break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
+		return Y;
+	}
+
 
 	template<class T>
 	__matrix__<T> Matrix<T>::Transpose()
