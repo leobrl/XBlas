@@ -32,10 +32,9 @@ namespace XBlas
 	using __column__ = std::shared_ptr<MatrixColumn<T>>;
 
 	/* Implementation of column major matrix*/
-	template<class T>
+	template<class T> //TODO: template on size
 	class  __declspec(dllexport) Matrix : public MemoryLayout<T>
 	{
-		static_assert(sizeof(T) == 4, "Matrix only supports type with size of 32 bits.");
 		static_assert(std::is_arithmetic<T>::value, "Matrix only supports arithmetic types.");
 
 	private:
@@ -104,6 +103,9 @@ namespace XBlas
 		std::shared_ptr<Vector<U>>  operator* (const std::shared_ptr<Vector<U>> V);
 
 		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+		void operator* (const U alpha);
+
+		template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
 		std::shared_ptr<Matrix<U>> Inverse();
 
 		template<class U>
@@ -121,7 +123,7 @@ namespace XBlas
 		{
 			for (int pos = 0; pos < nRows_*nColumns_; pos++)
 			{
-				destination[pos] = (U)source[pos];
+				destination[pos] = static_cast<U>(source[pos]);
 			}
 		}
 	};
@@ -448,6 +450,44 @@ namespace XBlas
 			INVALID_ARCHITECTURE_EXCEPTION
 		}
 		return Y;
+	}
+
+	template<class T>
+	template<class U = T, class = std::enable_if<std::is_same<U, float>::value>::type>
+	void Matrix<T>::operator* (const U alpha)
+	{
+		CudaManager& manager = CudaManager::GetInstance();
+		int incx = 1;
+		int m = nRows_;
+		int n = nColumns_;
+
+		cublasStatus_t status = cublasStatus_t::CUBLAS_STATUS_SUCCESS;
+		switch (buffer->GetArchitecture())
+		{
+		case Host:
+			this->Move(Device);
+
+			status = cublasSscal(manager.GetCublasHandle(),
+				m*n,
+				&alpha,
+				buffer->GetPtr(),
+				incx);
+			checkCudaStatus(status);
+
+			this->Move(Host);
+			
+			break;
+		case Device:
+			status = cublasSscal(manager.GetCublasHandle(),
+				m*n,
+				&alpha,
+				buffer->GetPtr(),
+				incx);
+			checkCudaStatus(status);
+			break;
+		default:
+			INVALID_ARCHITECTURE_EXCEPTION
+		}
 	}
 
 	template<class T>

@@ -121,7 +121,28 @@ TEST(MatrixTest, CastOperation)
 
 TEST(MatrixTest, MultiplyByScalar)
 {
-	FAIL();
+	hostDefaultMatrixInput;
+	std::shared_ptr<XBlas::Matrix<float>> matrix = XBlas::Matrix<float>::Build(nRows, nColumns, arch);
+
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			(matrix->operator[](row))->operator[](col) = 1.0;
+		}
+	}
+
+	matrix->operator*(2.0f);
+
+	double expected = 2.0;
+	for (int row = 0; row < nRows; ++row)
+	{
+		for (int col = 0; col < nColumns; ++col)
+		{
+			double actual = (matrix->operator[](col))->operator[](row);
+			ASSERT_DOUBLE_EQ(actual, expected);
+		}
+	}
 }
 
 TEST(MatrixTest, MultiplyByVector)
